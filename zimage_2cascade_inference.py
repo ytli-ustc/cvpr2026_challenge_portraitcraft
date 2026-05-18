@@ -289,6 +289,29 @@ def read_image_rgb_and_size(image_path: str) -> Tuple[Image.Image, Tuple[int, in
     return img_rgb, size
 
 
+def resolve_stage1_size(
+    item: Dict,
+    image_path: str,
+    rel_out: str,
+    predicted_sizes: Dict[str, Tuple[int, int]],
+    auto_resolution: bool,
+    fallback_width: int,
+    fallback_height: int,
+) -> Tuple[int, int, bool]:
+    if image_path in predicted_sizes:
+        w, h = predicted_sizes[image_path]
+        return w, h, False
+    if rel_out in predicted_sizes:
+        w, h = predicted_sizes[rel_out]
+        return w, h, False
+
+    if auto_resolution:
+        w, h = get_portrait_resolution(item.get("content_description", ""))
+    else:
+        w, h = fallback_width, fallback_height
+    return w, h, True
+
+
 def main():
     parser = argparse.ArgumentParser(
         description=(
@@ -317,6 +340,12 @@ def main():
     parser.add_argument("--use_lora_gen", type=str2bool, default=True)
     parser.add_argument("--use_lora_img2img", type=str2bool, default=True)
     parser.add_argument("--reference_image_dir", type=str, default="")
+    parser.add_argument(
+        "--stage1_output_path",
+        type=str,
+        default="",
+        help="Required when --reference_image_dir is empty. Stores stage-1 generated images.",
+    )
     parser.add_argument("--steps", type=int, default=50, help="ZImage+LoRA stage steps")
     parser.add_argument("--img2img_steps", type=int, default=50, help="img2img stage steps")
     parser.add_argument("--guidance_scale", type=float, default=4.0)
@@ -327,7 +356,8 @@ def main():
     parser.add_argument("--auto_resolution", action="store_true")
     parser.add_argument("--width", type=int, default=1024)
     parser.add_argument("--height", type=int, default=1024)
-    parser.add_argument("--use_negative_prompt", action="store_true")
+    parser.add_argument("--use_negative_prompt_stage1", type=str2bool, default=True)
+    parser.add_argument("--use_negative_prompt_stage2", type=str2bool, default=False)
     parser.add_argument("--cfg_normalization", action="store_true")
     parser.add_argument("--batch_start", type=int, default=0)
     parser.add_argument("--batch_end", type=int, default=-1)
@@ -382,24 +412,33 @@ def main():
             "Will use generate->img2img mode for all items.",
             flush=True,
         )
+    if not has_reference_dir:
+        if not args.stage1_output_path:
+            raise ValueError(
+                "--stage1_output_path must be provided when --reference_image_dir is empty or invalid."
+            )
+        if accelerator.is_main_process:
+            os.makedirs(args.stage1_output_path, exist_ok=True)
 
     img2img_model_path = args.img2img_model_path if args.img2img_model_path else args.model_path
     text2img_lora_path = args.lora_path if (args.use_lora_gen and args.lora_path) else None
     img2img_lora_path_raw = args.img2img_lora_path if args.img2img_lora_path else args.lora_path
     img2img_lora_path = img2img_lora_path_raw if (args.use_lora_img2img and img2img_lora_path_raw) else None
 
-    if accelerator.is_main_process:
-        print(
-            f"[INFO] Loading text2img pipeline... (use_lora_gen={args.use_lora_gen}, "
-            f"LoRA: {text2img_lora_path if text2img_lora_path else 'None'})",
-            flush=True,
+    pipe_lora = None
+    if not has_reference_dir:
+        if accelerator.is_main_process:
+            print(
+                f"[INFO] Loading stage-1 text2img pipeline... (use_lora_gen={args.use_lora_gen}, "
+                f"LoRA: {text2img_lora_path if text2img_lora_path else 'None'})",
+                flush=True,
+            )
+        pipe_lora = load_zimage_text2img_pipe(
+            model_path=args.model_path,
+            device=device_str,
+            lora_path=text2img_lora_path,
+            lora_scale=args.lora_scale,
         )
-    pipe_lora = load_zimage_text2img_pipe(
-        model_path=args.model_path,
-        device=device_str,
-        lora_path=text2img_lora_path,
-        lora_scale=args.lora_scale,
-    )
     if accelerator.is_main_process:
         print(
             "[INFO] Loading ZImage img2img pipeline... "
@@ -415,13 +454,73 @@ def main():
     )
 
     accelerator.wait_for_everyone()
-    negative_prompt = NEGATIVE_PROMPT if args.use_negative_prompt else ""
+    negative_prompt_stage1 = NEGATIVE_PROMPT if args.use_negative_prompt_stage1 else ""
+    negative_prompt_stage2 = NEGATIVE_PROMPT if args.use_negative_prompt_stage2 else ""
 
     direct_from_reference_count = 0
     generate_then_img2img_count = 0
+    stage1_saved_count = 0
+    stage1_skipped_existing_count = 0
     skipped_existing_count = 0
     resize_from_reference_count = 0
     missing_pred_size_count = 0
+
+    if not has_reference_dir:
+        for local_k, idx in enumerate(my_indices):
+            item = items[idx]
+            image_path = item.get("image_path", f"sample_{idx:06d}.png")
+            rel_out = normalize_rel_path(image_path)
+            stage1_file = os.path.join(args.stage1_output_path, rel_out)
+            os.makedirs(os.path.dirname(stage1_file) or ".", exist_ok=True)
+
+            if os.path.exists(stage1_file):
+                stage1_skipped_existing_count += 1
+                continue
+
+            prompt = get_prompt(item)
+            seed_i = args.seed + idx * 1000
+            stage1_w, stage1_h, missing_flag = resolve_stage1_size(
+                item=item,
+                image_path=image_path,
+                rel_out=rel_out,
+                predicted_sizes=predicted_sizes,
+                auto_resolution=args.auto_resolution,
+                fallback_width=args.width,
+                fallback_height=args.height,
+            )
+            if missing_flag:
+                missing_pred_size_count += 1
+                print(
+                    f"[WARN] rank={rank} missing predicted size for image_path='{image_path}', "
+                    f"fallback to {stage1_w}x{stage1_h}",
+                    flush=True,
+                )
+
+            print(
+                f"[INFO] rank={rank} [stage1 {local_k + 1}/{len(my_indices)}] global #{idx + 1}/{n_items} "
+                f"generate -> '{stage1_file}', size={stage1_w}x{stage1_h}",
+                flush=True,
+            )
+            stage1_img = generate_with_lora(
+                pipe=pipe_lora,
+                prompt=prompt,
+                negative_prompt=negative_prompt_stage1,
+                width=stage1_w,
+                height=stage1_h,
+                steps=args.steps,
+                guidance=args.guidance_scale,
+                seed=seed_i,
+                device=device_str,
+                cfg_normalization=args.cfg_normalization,
+                max_sequence_length=args.max_sequence_length,
+            )
+            if stage1_file.lower().endswith(".png"):
+                stage1_img.save(stage1_file, "PNG")
+            else:
+                stage1_img.save(stage1_file, "JPEG", quality=95)
+            stage1_saved_count += 1
+
+        accelerator.wait_for_everyone()
 
     for local_k, idx in enumerate(my_indices):
         item = items[idx]
@@ -437,18 +536,17 @@ def main():
         prompt = get_prompt(item)
         seed_i = args.seed + idx * 1000
 
-        # Stage-1 resolution is driven by predicted_sizes_json.
-        default_w = default_h = None
-        if image_path in predicted_sizes:
-            default_w, default_h = predicted_sizes[image_path]
-        elif rel_out in predicted_sizes:
-            default_w, default_h = predicted_sizes[rel_out]
-        else:
+        default_w, default_h, missing_flag = resolve_stage1_size(
+            item=item,
+            image_path=image_path,
+            rel_out=rel_out,
+            predicted_sizes=predicted_sizes,
+            auto_resolution=args.auto_resolution,
+            fallback_width=args.width,
+            fallback_height=args.height,
+        )
+        if missing_flag and has_reference_dir:
             missing_pred_size_count += 1
-            if args.auto_resolution:
-                default_w, default_h = get_portrait_resolution(item.get("content_description", ""))
-            else:
-                default_w, default_h = args.width, args.height
             print(
                 f"[WARN] rank={rank} missing predicted size for image_path='{image_path}', "
                 f"fallback to {default_w}x{default_h}",
@@ -472,25 +570,38 @@ def main():
                 direct_from_reference_count += 1
 
         if init_img is None:
-            print(
-                f"[INFO] rank={rank} [{local_k + 1}/{len(my_indices)}] global #{idx + 1}/{n_items} "
-                f"source: ZImage+LoRA then img2img, stage1={default_w}x{default_h}, "
-                f"target_size={target_w}x{target_h}",
-                flush=True,
-            )
-            init_img = generate_with_lora(
-                pipe=pipe_lora,
-                prompt=prompt,
-                negative_prompt=negative_prompt,
-                width=default_w,
-                height=default_h,
-                steps=args.steps,
-                guidance=args.guidance_scale,
-                seed=seed_i,
-                device=device_str,
-                cfg_normalization=args.cfg_normalization,
-                max_sequence_length=args.max_sequence_length,
-            )
+            if has_reference_dir:
+                print(
+                    f"[INFO] rank={rank} [{local_k + 1}/{len(my_indices)}] global #{idx + 1}/{n_items} "
+                    f"source: ZImage+LoRA then img2img, stage1={default_w}x{default_h}, "
+                    f"target_size={target_w}x{target_h}",
+                    flush=True,
+                )
+                init_img = generate_with_lora(
+                    pipe=pipe_lora,
+                    prompt=prompt,
+                    negative_prompt=negative_prompt_stage1,
+                    width=default_w,
+                    height=default_h,
+                    steps=args.steps,
+                    guidance=args.guidance_scale,
+                    seed=seed_i,
+                    device=device_str,
+                    cfg_normalization=args.cfg_normalization,
+                    max_sequence_length=args.max_sequence_length,
+                )
+            else:
+                stage1_file = os.path.join(args.stage1_output_path, rel_out)
+                if not os.path.exists(stage1_file):
+                    raise FileNotFoundError(
+                        f"Stage-1 image missing for rank={rank}, idx={idx}, expected: {stage1_file}"
+                    )
+                init_img, _ = read_image_rgb_and_size(stage1_file)
+                print(
+                    f"[INFO] rank={rank} [{local_k + 1}/{len(my_indices)}] global #{idx + 1}/{n_items} "
+                    f"source: '{stage1_file}' (stage1 folder -> img2img), target_size={target_w}x{target_h}",
+                    flush=True,
+                )
             generate_then_img2img_count += 1
 
         init_img = init_img.resize((target_w, target_h), Image.Resampling.LANCZOS)
@@ -498,7 +609,7 @@ def main():
             pipe=pipe_img2img,
             init_image=init_img,
             prompt=prompt,
-            negative_prompt=negative_prompt,
+            negative_prompt=negative_prompt_stage2,
             strength=args.strength,
             steps=args.img2img_steps,
             guidance=args.img2img_guidance_scale,
@@ -521,6 +632,8 @@ def main():
         [
             float(direct_from_reference_count),
             float(generate_then_img2img_count),
+            float(stage1_saved_count),
+            float(stage1_skipped_existing_count),
             float(skipped_existing_count),
             float(resize_from_reference_count),
             float(missing_pred_size_count),
@@ -532,9 +645,11 @@ def main():
     if accelerator.is_main_process:
         d_direct = int(counts_sum[0].item())
         d_gen = int(counts_sum[1].item())
-        d_skip = int(counts_sum[2].item())
-        d_resize = int(counts_sum[3].item())
-        d_missing = int(counts_sum[4].item())
+        d_stage1_saved = int(counts_sum[2].item())
+        d_stage1_skip = int(counts_sum[3].item())
+        d_skip = int(counts_sum[4].item())
+        d_resize = int(counts_sum[5].item())
+        d_missing = int(counts_sum[6].item())
         processed_count = d_direct + d_gen
         print("\n========== Inference Summary ==========", flush=True)
         print(
@@ -546,9 +661,13 @@ def main():
         print(f"Processed samples: {processed_count}", flush=True)
         print(f"Directly from reference image folder: {d_direct}", flush=True)
         print(f"Generate (ZImage+LoRA) then img2img: {d_gen}", flush=True)
+        print(f"Stage-1 saved images: {d_stage1_saved}", flush=True)
+        print(f"Stage-1 skipped existing images: {d_stage1_skip}", flush=True)
         print(f"Used reference size for img2img target: {d_resize}", flush=True)
         print(f"Missing predicted-size fallback count: {d_missing}", flush=True)
         print(f"Skipped existing outputs: {d_skip}", flush=True)
+        if not has_reference_dir:
+            print(f"Stage-1 outputs saved to: {args.stage1_output_path}", flush=True)
         print(f"Outputs saved to: {args.output_path}", flush=True)
 
 

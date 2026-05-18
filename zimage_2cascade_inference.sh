@@ -26,10 +26,11 @@ IMG2IMG_LORA_PATH="${IMG2IMG_LORA_PATH:-${LORA_PATH}}"
 LORA_SCALE="${LORA_SCALE:-1.0}"
 
 REFERENCE_IMAGE_DIR="${REFERENCE_IMAGE_DIR:-}"
+STAGE1_OUTPUT_PATH="${STAGE1_OUTPUT_PATH:-/local/liyanting/portrait/cvpr2026_challenge_portraitcraft/outputs_zimage_2cascade_001_stage1}"
 
 STEPS="${STEPS:-50}"
 IMG2IMG_STEPS="${IMG2IMG_STEPS:-50}"
-GUIDANCE_SCALE="${GUIDANCE_SCALE:-4.0}"
+GUIDANCE_SCALE="${GUIDANCE_SCALE:-5.0}"
 IMG2IMG_GUIDANCE_SCALE="${IMG2IMG_GUIDANCE_SCALE:-4.0}"
 STRENGTH="${STRENGTH:-0.99}"
 MAX_SEQUENCE_LENGTH="${MAX_SEQUENCE_LENGTH:-768}"
@@ -38,7 +39,8 @@ SEED="${SEED:-42}"
 WIDTH="${WIDTH:-1024}"                   # fallback only if missing prediction
 HEIGHT="${HEIGHT:-1024}"                 # fallback only if missing prediction
 AUTO_RESOLUTION="${AUTO_RESOLUTION:-0}" # fallback only if missing prediction
-USE_NEGATIVE_PROMPT="${USE_NEGATIVE_PROMPT:-1}"
+USE_NEGATIVE_PROMPT_STAGE1="${USE_NEGATIVE_PROMPT_STAGE1:-1}"
+USE_NEGATIVE_PROMPT_STAGE2="${USE_NEGATIVE_PROMPT_STAGE2:-0}"
 CFG_NORMALIZATION="${CFG_NORMALIZATION:-0}"
 SAVE_PROMPTS="${SAVE_PROMPTS:-1}"
 
@@ -57,6 +59,7 @@ ARGS=(
   --img2img_lora_path "${IMG2IMG_LORA_PATH}"
   --lora_scale "${LORA_SCALE}"
   --reference_image_dir "${REFERENCE_IMAGE_DIR}"
+  --stage1_output_path "${STAGE1_OUTPUT_PATH}"
   --steps "${STEPS}"
   --img2img_steps "${IMG2IMG_STEPS}"
   --guidance_scale "${GUIDANCE_SCALE}"
@@ -64,6 +67,8 @@ ARGS=(
   --strength "${STRENGTH}"
   --max_sequence_length "${MAX_SEQUENCE_LENGTH}"
   --seed "${SEED}"
+  --use_negative_prompt_stage1 "${USE_NEGATIVE_PROMPT_STAGE1}"
+  --use_negative_prompt_stage2 "${USE_NEGATIVE_PROMPT_STAGE2}"
   --width "${WIDTH}"
   --height "${HEIGHT}"
   --batch_start "${BATCH_START}"
@@ -72,9 +77,6 @@ ARGS=(
 
 if [[ "${AUTO_RESOLUTION}" == "1" ]]; then
   ARGS+=(--auto_resolution)
-fi
-if [[ "${USE_NEGATIVE_PROMPT}" == "1" ]]; then
-  ARGS+=(--use_negative_prompt)
 fi
 if [[ "${CFG_NORMALIZATION}" == "1" ]]; then
   ARGS+=(--cfg_normalization)
