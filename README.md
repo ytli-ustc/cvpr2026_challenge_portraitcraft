@@ -1,8 +1,8 @@
 # cvpr2026_challenge_portraitcraft
 
-CVPR 2026 PortraitCraft Challenge — 两阶段推理方案：先用 Qwen3 预测画幅比例，再用 Z-Image（text2img）+ Z-Image-Turbo（img2img）级联生成。
+**CVPR 2026 PortraitCraft Challenge** — a two-stage pipeline: predict canvas size with Qwen3, then cascade **Z-Image** (text-to-image) followed by **Z-Image Turbo** (image-to-image).
 
-## 环境准备
+## Environment
 
 ```bash
 git clone https://github.com/ytli-ustc/cvpr2026_challenge_portraitcraft.git
@@ -10,20 +10,20 @@ cd cvpr2026_challenge_portraitcraft
 pip install -r requirements.txt
 ```
 
-建议使用 Python 3.10+ 与 CUDA 12.x 的 PyTorch 环境。
+Python 3.10+ and a CUDA 12.x–compatible PyTorch build are recommended.
 
-## 下载模型与权重
+## Download checkpoints
 
-在仓库根目录创建 `checkpoints` 目录，并从 Hugging Face 拉取以下资源（可用 `huggingface-cli` 或 `git lfs clone`）：
+Create a `checkpoints` folder at the repository root and download the artifacts below (`huggingface-cli`, `snapshot_download`, or `git lfs` are all fine):
 
-| 用途 | Hugging Face 仓库 | 建议本地路径 |
-|------|-------------------|--------------|
-| Stage-1 文生图底座 | [Tongyi-MAI/Z-Image](https://huggingface.co/Tongyi-MAI/Z-Image) | `checkpoints/Z-Image` |
-| Stage-2 图生图底座 | [Tongyi-MAI/Z-Image-Turbo](https://huggingface.co/Tongyi-MAI/Z-Image-Turbo) | `checkpoints/Z-Image-Turbo` |
-| 画幅预测底座 | [Qwen/Qwen3-0.6B](https://huggingface.co/Qwen/Qwen3-0.6B) | `checkpoints/Qwen3-0.6B` |
-| 本方案 LoRA 与 size predictor | [ustc-ytli/cvpr26_portraitcraft](https://huggingface.co/ustc-ytli/cvpr26_portraitcraft) | `checkpoints/cvpr26_portraitcraft` |
+| Purpose | Hugging Face repo | Suggested local path |
+|---------|-------------------|----------------------|
+| Stage-1 base (txt2img) | [Tongyi-MAI/Z-Image](https://huggingface.co/Tongyi-MAI/Z-Image) | `checkpoints/Z-Image` |
+| Stage-2 base (img2img) | [Tongyi-MAI/Z-Image-Turbo](https://huggingface.co/Tongyi-MAI/Z-Image-Turbo) | `checkpoints/Z-Image-Turbo` |
+| Size predictor base | [Qwen/Qwen3-0.6B](https://huggingface.co/Qwen/Qwen3-0.6B) | `checkpoints/Qwen3-0.6B` |
+| Our LoRA + size predictor weights | [ustc-ytli/cvpr26_portraitcraft](https://huggingface.co/ustc-ytli/cvpr26_portraitcraft) | `checkpoints/cvpr26_portraitcraft` |
 
-示例下载代码：
+Example downloads:
 
 ```bash
 mkdir -p checkpoints
@@ -41,12 +41,12 @@ huggingface-cli download ustc-ytli/cvpr26_portraitcraft \
   --local-dir checkpoints/cvpr26_portraitcraft
 ```
 
-`ustc-ytli/cvpr26_portraitcraft` 仓库内包含：
+Contents of `ustc-ytli/cvpr26_portraitcraft`:
 
-- `checkpoints/cvpr26_portraitcraft/checkpoint-1000/` — Z-Image Stage-1 LoRA
-- `checkpoints/cvpr26_portraitcraft/size_predictor/` — Qwen3 画幅预测 LoRA
+- `checkpoint-1000/` — Z-Image Stage-1 LoRA  
+- `size_predictor/` — Qwen3 aspect-ratio LoRA  
 
-最终目录结构示例：
+Example layout:
 
 ```text
 cvpr2026_challenge_portraitcraft/
@@ -65,15 +65,15 @@ cvpr2026_challenge_portraitcraft/
 └── zimage_2cascade_inference.sh
 ```
 
-另需准备官方测试集 JSON（例如 PortraitCraft Track 2 的 `track_2_test.json`），在 Step 2 中通过 `TEST_JSON` 指定其路径（该文件不在本仓库内）。
+You also need the **official test manifest** (e.g. PortraitCraft Track 2 `track_2_test.json`). It is not shipped in this repo; pass its path via `TEST_JSON` in Step 2.
 
-## 推理流程
+## Inference
 
-以下命令均默认在仓库根目录 `cvpr2026_challenge_portraitcraft/` 下执行。
+All commands below assume the repository root as the working directory.
 
-### Step 1：预测画幅（aspect ratio）
+### Step 1 — Predict `(width, height)`
 
-对 `assets/test_buckets.jsonl` 中的每条样本预测 `(width, height)`，并写出带尺寸字段的测试 JSON：
+Run the size predictor on `assets/test_buckets.jsonl` and write a JSON file with predicted dimensions:
 
 ```bash
 python predict_sizes.py \
@@ -83,11 +83,11 @@ python predict_sizes.py \
   --output_json track_2_test_with_predicted_sizes.json
 ```
 
-`--data_dir` 可省略，默认使用 `--input_jsonl` 所在目录下的 `buckets.json`（即 `assets/buckets.json`）。
+`--data_dir` is optional; by default `buckets.json` is read from the same directory as `--input_jsonl` (here: `assets/buckets.json`).
 
-### Step 2：两阶段 Z-Image 级联生成
+### Step 2 — Two-stage Z-Image cascade
 
-执行 `zimage_2cascade_inference.sh`。脚本通过环境变量覆盖默认参数；下列示例与推荐推理配置一致（Stage-1：Z-Image + LoRA；Stage-2：Z-Image-Turbo img2img）。除 `TEST_JSON` 外，路径均为仓库内相对路径。
+Launch `zimage_2cascade_inference.sh`. Parameters are overridden with environment variables. The example matches our recommended setup: Stage-1 = Z-Image + LoRA; Stage-2 = Z-Image-Turbo img2img. Paths below are relative to the repo root except `TEST_JSON`.
 
 ```bash
 TEST_JSON=path/to/track_2_test.json \
@@ -111,38 +111,36 @@ MAIN_PROCESS_PORT=29502 \
 ./zimage_2cascade_inference.sh
 ```
 
-说明：
+| Variable | Description |
+|----------|-------------|
+| `TEST_JSON` | Official test prompts (download separately). |
+| `PREDICTED_SIZES_JSON` | Output of Step 1: `track_2_test_with_predicted_sizes.json`. |
+| `OUTPUT_PATH` | Final images: `outputs_zimage_2cascade_001/`. |
+| `STAGE1_OUTPUT_PATH` | Stage-1 intermediates: `outputs_zimage_2cascade_001_stage1/`. |
+| `MODEL_PATH` | Stage-1 base: `checkpoints/Z-Image`. |
+| `IMG2IMG_MODEL_PATH` | Stage-2 base: `checkpoints/Z-Image-Turbo`. |
+| `LORA_PATH` | Stage-1 LoRA: `checkpoints/cvpr26_portraitcraft/checkpoint-1000`. |
+| `STRENGTH` | Img2img strength (we use `0.3`). |
+| `IMG2IMG_STEPS` / `IMG2IMG_GUIDANCE_SCALE` | Turbo steps and CFG (often `0` CFG for Turbo-style runs). |
+| `NUM_PROCESSES` | `accelerate launch` worker count — match your GPU count. |
 
-| 变量 | 含义 |
+For single-GPU debugging, set `USE_ACCELERATE=0` or `NUM_PROCESSES=1`.
+
+Final images land under `OUTPUT_PATH`. With `SAVE_PROMPTS=1` (the script default), a `prompts.json` is also emitted.
+
+## File overview
+
+| File | Role |
 |------|------|
-| `TEST_JSON` | 官方测试 prompt 列表（需自行下载，非仓库内文件） |
-| `PREDICTED_SIZES_JSON` | Step 1 输出：`track_2_test_with_predicted_sizes.json` |
-| `OUTPUT_PATH` | 最终生成图目录：`outputs_zimage_2cascade_001/` |
-| `STAGE1_OUTPUT_PATH` | Stage-1 中间结果：`outputs_zimage_2cascade_001_stage1/` |
-| `MODEL_PATH` | Stage-1 底座：`checkpoints/Z-Image` |
-| `IMG2IMG_MODEL_PATH` | Stage-2 底座：`checkpoints/Z-Image-Turbo` |
-| `LORA_PATH` | Stage-1 LoRA：`checkpoints/cvpr26_portraitcraft/checkpoint-1000` |
-| `STRENGTH` | img2img 强度（推荐 `0.3`） |
-| `IMG2IMG_STEPS` / `IMG2IMG_GUIDANCE_SCALE` | Turbo 阶段步数与 guidance（Turbo 常用 `0`） |
-| `NUM_PROCESSES` | `accelerate` 并行进程数，按 GPU 数量调整 |
+| `predict_sizes.py` | Qwen3-0.6B + size-predictor LoRA for aspect/size prediction. |
+| `zimage_2cascade_inference.py` | Main two-stage inference entry point. |
+| `zimage_2cascade_inference.sh` | Multi-GPU launcher (`accelerate launch`). |
+| `assets/test_buckets.jsonl` | Sample input lines for size prediction. |
+| `assets/buckets.json` | Bucket definitions (letters ↔ resolutions). |
 
-若仅单卡调试，可设置 `USE_ACCELERATE=0` 或 `NUM_PROCESSES=1`。
+## References
 
-生成结果默认保存在 `OUTPUT_PATH`；若开启 `SAVE_PROMPTS=1`（脚本默认），会同时保存对应 prompt 文本。
-
-## 文件说明
-
-| 文件 | 说明 |
-|------|------|
-| `predict_sizes.py` | 基于 Qwen3-0.6B + size predictor LoRA 预测画幅 |
-| `zimage_2cascade_inference.py` | 两阶段推理主程序 |
-| `zimage_2cascade_inference.sh` | 多卡启动脚本（`accelerate launch`） |
-| `assets/test_buckets.jsonl` | 画幅预测输入样例 |
-| `assets/buckets.json` | 画幅类别与分辨率定义 |
-
-## 参考链接
-
-- [Tongyi-MAI/Z-Image](https://huggingface.co/Tongyi-MAI/Z-Image)
-- [Tongyi-MAI/Z-Image-Turbo](https://huggingface.co/Tongyi-MAI/Z-Image-Turbo)
-- [Qwen/Qwen3-0.6B](https://huggingface.co/Qwen/Qwen3-0.6B)
-- [ustc-ytli/cvpr26_portraitcraft](https://huggingface.co/ustc-ytli/cvpr26_portraitcraft)
+- [Tongyi-MAI/Z-Image](https://huggingface.co/Tongyi-MAI/Z-Image)  
+- [Tongyi-MAI/Z-Image-Turbo](https://huggingface.co/Tongyi-MAI/Z-Image-Turbo)  
+- [Qwen/Qwen3-0.6B](https://huggingface.co/Qwen/Qwen3-0.6B)  
+- [ustc-ytli/cvpr26_portraitcraft](https://huggingface.co/ustc-ytli/cvpr26_portraitcraft)  
