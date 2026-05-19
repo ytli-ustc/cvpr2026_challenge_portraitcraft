@@ -1,0 +1,10 @@
+accelerate==1.13.0
+diffusers==0.37.1
+peft==0.18.1
+pillow==12.2.0
+torch==2.7.0+cu118
+tqdm==4.67.3
+transformers==4.57.0
+
+# PyTorch CUDA 11.8 wheels (needed for torch==...+cu118):
+#   pip install --extra-index-url https://download.pytorch.org/whl/cu118 -r requirements.txt
