@@ -17,7 +17,7 @@ TEST_JSON="${TEST_JSON:-PortraitCraft/track_2_test.json}"
 PREDICTED_SIZES_JSON="${PREDICTED_SIZES_JSON:-track_2_test_with_predicted_sizes.json}"
 OUTPUT_PATH="${OUTPUT_PATH:-outputs_zimage_2cascade_001_stage2}"
 
-MODEL_PATH="${MODEL_PATH:-checkpoints/Tongyi-MAI-Z-Image}"
+MODEL_PATH="${MODEL_PATH:-checkpoints/Z-Image}"
 IMG2IMG_MODEL_PATH="${IMG2IMG_MODEL_PATH:-checkpoints/Z-Image-Turbo}"
 USE_LORA_GEN="${USE_LORA_GEN:-1}"
 USE_LORA_IMG2IMG="${USE_LORA_IMG2IMG:-0}"
