@@ -13,27 +13,27 @@ USE_ACCELERATE="${USE_ACCELERATE:-1}"   # 1: accelerate launch, 0: plain python
 NUM_PROCESSES="${NUM_PROCESSES:-8}"
 MAIN_PROCESS_PORT="${MAIN_PROCESS_PORT:-29502}"
 
-TEST_JSON="${TEST_JSON:-/local/liyanting/datasets/PortraitCraft/track_2_test.json}"
-PREDICTED_SIZES_JSON="${PREDICTED_SIZES_JSON:-/local/liyanting/portrait/last_version/track_2_test_with_predicted_sizes.json}"
-OUTPUT_PATH="${OUTPUT_PATH:-/local/liyanting/portrait/cvpr2026_challenge_portraitcraft/outputs_zimage_2cascade_001}"
+TEST_JSON="${TEST_JSON:-PortraitCraft/track_2_test.json}"
+PREDICTED_SIZES_JSON="${PREDICTED_SIZES_JSON:-track_2_test_with_predicted_sizes.json}"
+OUTPUT_PATH="${OUTPUT_PATH:-outputs_zimage_2cascade_001_stage2}"
 
-MODEL_PATH="${MODEL_PATH:-/local/liyanting/checkpoints/Tongyi-MAI-Z-Image}"
-IMG2IMG_MODEL_PATH="${IMG2IMG_MODEL_PATH:-${MODEL_PATH}}"
+MODEL_PATH="${MODEL_PATH:-checkpoints/Tongyi-MAI-Z-Image}"
+IMG2IMG_MODEL_PATH="${IMG2IMG_MODEL_PATH:-checkpoints/Z-Image-Turbo}"
 USE_LORA_GEN="${USE_LORA_GEN:-1}"
 USE_LORA_IMG2IMG="${USE_LORA_IMG2IMG:-0}"
-LORA_PATH="${LORA_PATH:-/local/liyanting/checkpoints/zimage_lora/lora_zimage_out_merge_3_joint_v2/final}"
+LORA_PATH="${LORA_PATH:-checkpoints/cvpr26_portraitcraft/lora_checkpoints}"
 IMG2IMG_LORA_PATH="${IMG2IMG_LORA_PATH:-${LORA_PATH}}"
 LORA_SCALE="${LORA_SCALE:-1.0}"
 
 REFERENCE_IMAGE_DIR="${REFERENCE_IMAGE_DIR:-}"
-STAGE1_OUTPUT_PATH="${STAGE1_OUTPUT_PATH:-/local/liyanting/portrait/cvpr2026_challenge_portraitcraft/outputs_zimage_2cascade_001_stage1}"
+STAGE1_OUTPUT_PATH="${STAGE1_OUTPUT_PATH:-outputs_zimage_2cascade_001_stage1}"
 
 STEPS="${STEPS:-50}"
 IMG2IMG_STEPS="${IMG2IMG_STEPS:-50}"
 GUIDANCE_SCALE="${GUIDANCE_SCALE:-5.0}"
 IMG2IMG_GUIDANCE_SCALE="${IMG2IMG_GUIDANCE_SCALE:-4.0}"
 STRENGTH="${STRENGTH:-0.99}"
-MAX_SEQUENCE_LENGTH="${MAX_SEQUENCE_LENGTH:-768}"
+MAX_SEQUENCE_LENGTH="${MAX_SEQUENCE_LENGTH:-512}"
 SEED="${SEED:-42}"
 
 WIDTH="${WIDTH:-1024}"                   # fallback only if missing prediction
