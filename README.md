@@ -10,7 +10,7 @@ cd cvpr2026_challenge_portraitcraft
 pip install -r requirements.txt
 ```
 
-Python 3.10+ and a CUDA 12.x–compatible PyTorch build are recommended.
+Python 3.10+ and a CUDA 11.x–compatible PyTorch build are recommended.
 
 ## Download checkpoints
 
@@ -43,7 +43,7 @@ huggingface-cli download ustc-ytli/cvpr26_portraitcraft \
 
 Contents of `ustc-ytli/cvpr26_portraitcraft`:
 
-- `checkpoint-1000/` — Z-Image Stage-1 LoRA  
+- `lora_checkpoints/` — Z-Image Stage-1 LoRA  
 - `size_predictor/` — Qwen3 aspect-ratio LoRA  
 
 Example layout:
@@ -58,7 +58,7 @@ cvpr2026_challenge_portraitcraft/
 │   ├── Z-Image-Turbo/
 │   ├── Qwen3-0.6B/
 │   └── cvpr26_portraitcraft/
-│       ├── checkpoint-1000/
+│       ├── lora_checkpoints/
 │       └── size_predictor/
 ├── predict_sizes.py
 ├── zimage_2cascade_inference.py
@@ -96,7 +96,7 @@ OUTPUT_PATH=outputs_zimage_2cascade_001 \
 STAGE1_OUTPUT_PATH=outputs_zimage_2cascade_001_stage1 \
 MODEL_PATH=checkpoints/Z-Image \
 IMG2IMG_MODEL_PATH=checkpoints/Z-Image-Turbo \
-LORA_PATH=checkpoints/cvpr26_portraitcraft/checkpoint-1000 \
+LORA_PATH=checkpoints/cvpr26_portraitcraft/lora_checkpoints \
 USE_LORA_GEN=1 \
 USE_LORA_IMG2IMG=0 \
 STEPS=50 \
@@ -119,7 +119,7 @@ MAIN_PROCESS_PORT=29502 \
 | `STAGE1_OUTPUT_PATH` | Stage-1 intermediates: `outputs_zimage_2cascade_001_stage1/`. |
 | `MODEL_PATH` | Stage-1 base: `checkpoints/Z-Image`. |
 | `IMG2IMG_MODEL_PATH` | Stage-2 base: `checkpoints/Z-Image-Turbo`. |
-| `LORA_PATH` | Stage-1 LoRA: `checkpoints/cvpr26_portraitcraft/checkpoint-1000`. |
+| `LORA_PATH` | Stage-1 LoRA: `checkpoints/cvpr26_portraitcraft/lora_checkpoints`. |
 | `STRENGTH` | Img2img strength (we use `0.3`). |
 | `IMG2IMG_STEPS` / `IMG2IMG_GUIDANCE_SCALE` | Turbo steps and CFG (often `0` CFG for Turbo-style runs). |
 | `NUM_PROCESSES` | `accelerate launch` worker count — match your GPU count. |
